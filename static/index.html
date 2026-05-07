@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KeyGuard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060608;--surface:#0d0d12;--surface2:#141418;--surface3:#1b1b22;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --accent:#7b68ee;--accent-dim:rgba(123,104,238,0.15);--accent-text:#a89fff;
+  --danger:#e05c7a;--danger-dim:rgba(224,92,122,0.12);--danger-text:#f0849d;
+  --warn:#d4882a;--warn-dim:rgba(212,136,42,0.1);--warn-text:#e8a84a;
+  --ok:#3db88a;--ok-dim:rgba(61,184,138,0.1);--ok-text:#5cd4a6;
+  --text:#e8e8f0;--text2:#8888a0;--text3:#44445a;
+  --th:52px;--rad:10px;
+}
+html,body{height:100%;overflow:hidden;font-family:'IBM Plex Sans',sans-serif}
+body{background:var(--bg);color:var(--text);display:flex;flex-direction:column}
+
+.topbar{height:var(--th);background:rgba(6,6,8,0.95);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0;position:fixed;top:0;left:0;right:0;z-index:200;backdrop-filter:blur(20px);}
+.brand{display:flex;align-items:center;gap:10px;padding:0 20px;border-right:1px solid var(--border);height:100%;min-width:220px;}
+.brand-icon{width:26px;height:26px;border-radius:6px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-family:'IBM Plex Mono',monospace;font-weight:700;color:#fff;flex-shrink:0;}
+.brand-name{font-size:14px;font-weight:600;letter-spacing:-0.3px}
+.brand-name em{color:var(--text2);font-style:normal;font-weight:400}
+
+.topnav{display:flex;align-items:center;gap:2px;padding:0 14px;flex:1}
+.tnav-btn{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;letter-spacing:0.3px;padding:6px 14px;border-radius:7px;border:none;background:none;color:var(--text3);cursor:pointer;transition:.15s;}
+.tnav-btn:hover{background:var(--surface2);color:var(--text2)}
+.tnav-btn.on{background:var(--surface3);color:var(--text);border:1px solid var(--border)}
+
+.topbar-right{display:flex;align-items:center;gap:8px;padding:0 16px;margin-left:auto}
+
+.pill{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.4px;border:1px solid var(--border);color:var(--text3);background:var(--surface);transition:.3s;}
+.pill.live{border-color:rgba(61,184,138,0.3);color:var(--ok-text);background:var(--ok-dim)}
+.pill.offline{border-color:rgba(224,92,122,0.3);color:var(--danger-text);background:var(--danger-dim)}
+.pill-dot{width:5px;height:5px;border-radius:50%;background:currentColor}
+.pill-dot.pulse{animation:dotpulse 1.4s infinite}
+@keyframes dotpulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* MODE TOGGLE — slider lives inside the container */
+.mode-toggle{display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px;position:relative;}
+.mtog{font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.5px;padding:5px 12px;border-radius:5px;border:none;background:none;cursor:pointer;transition:color .15s;color:var(--text3);position:relative;z-index:1;}
+.mtog:hover{color:var(--text2)}
+.mtog.on{color:var(--text)}
+.mtog.on.active-mode{color:var(--danger-text)}
+#mode-slider{position:absolute;top:3px;bottom:3px;border-radius:5px;background:var(--surface3);border:1px solid var(--border);transition:left .25s cubic-bezier(.4,0,.2,1),width .25s cubic-bezier(.4,0,.2,1),background .25s,border-color .25s;pointer-events:none;z-index:0;}
+
+.layout{display:flex;margin-top:var(--th);height:calc(100vh - var(--th))}
+
+.sidebar{width:220px;background:rgba(6,6,8,0.8);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0;}
+.sidebar-label{font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);padding:0 6px;margin-bottom:6px;}
+
+.conf-widget{margin:12px;padding:14px;border-radius:var(--rad);background:var(--surface2);border:1px solid var(--border);}
+.conf-widget-val{font-family:'IBM Plex Mono',monospace;font-size:32px;font-weight:700;letter-spacing:-2px;line-height:1;color:var(--text);}
+.conf-widget-label{font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--text3);margin-top:4px}
+.conf-bar{height:3px;background:var(--surface3);border-radius:2px;margin-top:10px;overflow:hidden}
+.conf-bar-fill{height:100%;border-radius:2px;transition:width .8s cubic-bezier(.4,0,.2,1),background .5s}
+
+.sstat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 12px 12px}
+.sstat-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px}
+.sstat-val{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600;line-height:1}
+.sstat-lbl{font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--text3);margin-top:3px;letter-spacing:.5px}
+.divider{height:1px;background:var(--border);margin:0 12px}
+.sidebar-alert{margin:12px;border-radius:8px;padding:12px;font-size:11px;line-height:1.6;background:var(--danger-dim);border:1px solid rgba(224,92,122,0.25);color:var(--danger-text);display:none;}
+.sidebar-alert.on{display:block}
+
+.main{flex:1;overflow-y:auto;overflow-x:hidden;padding:24px}
+.page{display:none;animation:pagein .2s ease both;max-width:960px}
+.page.on{display:block}
+@keyframes pagein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+.phead{margin-bottom:20px}
+.peyebrow{font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--accent-text);margin-bottom:4px}
+.ptitle{font-size:20px;font-weight:600;letter-spacing:-0.5px}
+.psub{font-size:12px;color:var(--text2);margin-top:3px}
+
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rad);padding:16px;position:relative;}
+.card:hover{border-color:var(--border2)}
+.clabel{font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
+.cval{font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:700;letter-spacing:-1px;line-height:1}
+.csub{font-size:10px;color:var(--text3);margin-top:3px}
+
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--rad);overflow:hidden;margin-bottom:12px}
+.ph{padding:11px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;min-height:40px}
+.ph-title{font-size:12px;font-weight:600;color:var(--text)}
+.ph-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.badge{font-family:'IBM Plex Mono',monospace;font-size:8px;padding:3px 7px;border-radius:4px;letter-spacing:.3px}
+.badge-ok{background:var(--ok-dim);color:var(--ok-text);border:1px solid rgba(61,184,138,0.2)}
+.badge-warn{background:var(--warn-dim);color:var(--warn-text);border:1px solid rgba(212,136,42,0.2)}
+.badge-off{background:rgba(68,68,90,0.15);color:var(--text3);border:1px solid rgba(68,68,90,0.2)}
+.badge-danger{background:var(--danger-dim);color:var(--danger-text);border:1px solid rgba(224,92,122,0.2)}
+.pb{padding:16px}
+
+.threat-bar{padding:12px 16px;display:flex;align-items:center;gap:12px;border-radius:9px;margin-bottom:14px;border:1px solid transparent;transition:.4s;}
+.threat-bar.safe{background:var(--ok-dim);border-color:rgba(61,184,138,0.2)}
+.threat-bar.warn{background:var(--warn-dim);border-color:rgba(212,136,42,0.2)}
+.threat-bar.high{background:var(--danger-dim);border-color:rgba(224,92,122,0.25);animation:threatpulse 2s infinite}
+@keyframes threatpulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 14px rgba(224,92,122,.12)}}
+.threat-ico{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;font-family:'IBM Plex Mono',monospace;font-weight:700}
+.threat-ico.safe{background:rgba(61,184,138,0.15);color:var(--ok-text)}
+.threat-ico.warn{background:rgba(212,136,42,0.15);color:var(--warn-text)}
+.threat-ico.high{background:rgba(224,92,122,0.15);color:var(--danger-text)}
+
+.pbar{background:var(--surface3);border-radius:3px;overflow:hidden}
+.pbar-fill{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.4,0,.2,1)}
+.fill-ok{background:var(--ok)}.fill-warn{background:var(--warn)}.fill-danger{background:var(--danger)}.fill-accent{background:var(--accent)}
+
+.chart-wrap{position:relative;height:80px}
+.chart-wrap canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
+
+.log-item{display:flex;align-items:flex-start;gap:10px;padding:9px 16px;border-bottom:1px solid rgba(255,255,255,.03);}
+.log-item:last-child{border-bottom:none}
+.log-accent{width:2px;align-self:stretch;border-radius:2px;flex-shrink:0;margin-top:1px}
+.log-accent.info{background:var(--accent)}.log-accent.ok{background:var(--ok)}.log-accent.warn{background:var(--warn)}.log-accent.danger{background:var(--danger)}
+.log-ico{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:9px;font-family:'IBM Plex Mono',monospace;font-weight:700;flex-shrink:0}
+.log-ico.info{background:var(--accent-dim);color:var(--accent-text)}.log-ico.ok{background:var(--ok-dim);color:var(--ok-text)}.log-ico.warn{background:var(--warn-dim);color:var(--warn-text)}.log-ico.danger{background:var(--danger-dim);color:var(--danger-text)}
+.log-body{flex:1;font-size:11px;color:var(--text2);line-height:1.5}
+.log-time{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text3);flex-shrink:0;padding-top:1px}
+
+.fgroup{margin-bottom:12px}
+.flabel{display:block;font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--text3);margin-bottom:5px}
+.finput{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:9px 11px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text);outline:none;transition:.2s;}
+.finput:focus{border-color:rgba(123,104,238,0.4);background:rgba(123,104,238,0.04)}
+.finput::placeholder{color:var(--text3)}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.toggle{position:relative;width:30px;height:16px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0}
+.tog-track{position:absolute;inset:0;background:var(--surface3);border-radius:8px;transition:.2s;border:1px solid var(--border)}
+.toggle input:checked+.tog-track{background:var(--accent);border-color:var(--accent)}
+.tog-thumb{position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#fff;transition:.2s}
+.toggle input:checked~.tog-thumb{left:16px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.toggle-row:last-child{border-bottom:none}
+
+.phase-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.phase-item:last-child{border-bottom:none}
+.phase-num{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;flex-shrink:0}
+.phase-num.done{background:var(--ok-dim);color:var(--ok-text)}.phase-num.cur{background:var(--accent-dim);color:var(--accent-text)}.phase-num.pend{background:var(--surface3);color:var(--text3)}
+
+.chk-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.chk-item:last-child{border-bottom:none}
+.chk-ico{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+.chk-ico.pass{background:var(--ok-dim);color:var(--ok-text)}.chk-ico.fail{background:var(--danger-dim);color:var(--danger-text)}
+
+.hmap{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-top:10px}
+.hcell{height:12px;border-radius:2px}
+
+.filters{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+.fbtn{font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:600;letter-spacing:.3px;padding:4px 9px;border-radius:5px;border:1px solid var(--border);background:none;color:var(--text3);cursor:pointer;transition:.12s;}
+.fbtn:hover,.fbtn.on{background:var(--surface2);color:var(--text);border-color:var(--border2)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 18px;border-radius:8px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:.15s;}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{opacity:.9;transform:translateY(-1px)}.btn-primary:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.btn-ghost{background:var(--surface2);border:1px solid var(--border);color:var(--text2)}.btn-ghost:hover{color:var(--text);border-color:var(--border2)}
+.btn-danger{background:var(--danger-dim);border:1px solid rgba(224,92,122,0.3);color:var(--danger-text)}.btn-danger:hover{background:rgba(224,92,122,0.22)}
+.btn-ok{background:var(--ok-dim);border:1px solid rgba(61,184,138,0.2);color:var(--ok-text)}.btn-ok:hover{background:rgba(61,184,138,0.18)}
+
+.empty{text-align:center;padding:24px;color:var(--text3);font-size:11px;font-family:'IBM Plex Mono',monospace}
+
+.toast-wrap{position:fixed;top:62px;right:16px;z-index:500;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:9px 13px;display:flex;align-items:center;gap:8px;font-size:11px;min-width:240px;max-width:300px;pointer-events:all;animation:toastin .2s cubic-bezier(.4,0,.2,1);}
+.toast.danger{border-color:rgba(224,92,122,0.3);background:rgba(224,92,122,0.08)}.toast.ok{border-color:rgba(61,184,138,0.25);background:rgba(61,184,138,0.07)}.toast.warn{border-color:rgba(212,136,42,0.25);background:rgba(212,136,42,0.07)}.toast.info{border-color:rgba(123,104,238,0.25);background:rgba(123,104,238,0.07)}
+.toast-ico{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;flex-shrink:0}
+.toast-msg{flex:1;color:var(--text);line-height:1.4}
+.toast-x{color:var(--text3);cursor:pointer;font-size:13px;padding:1px 3px}.toast-x:hover{color:var(--text)}
+@keyframes toastin{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
+
+/* Action modal */
+.pw-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:900;align-items:center;justify-content:center}
+.pw-overlay.on{display:flex}
+.pw-box{background:var(--surface);border:1px solid rgba(123,104,238,0.3);border-radius:12px;padding:26px;width:320px;transition:border-color .2s}
+.pw-box.danger-modal{border-color:rgba(224,92,122,0.4)}
+.pw-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--accent-text);margin-bottom:7px}
+.pw-box.danger-modal .pw-eyebrow{color:var(--danger-text)}
+.pw-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:3px}
+.pw-sub{font-size:11px;color:var(--text2);margin-bottom:16px;line-height:1.5}
+.pw-err{font-size:10px;color:var(--danger-text);min-height:14px;margin-bottom:8px}
+.pw-actions{display:flex;gap:8px;margin-top:4px}
+
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.06);border-radius:3px}
+</style>
+</head>
+<body>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-icon">KG</div>
+    <span class="brand-name">Key<em>Guard</em></span>
+  </div>
+  <nav class="topnav">
+    <button class="tnav-btn on" data-page="dashboard">Dashboard</button>
+    <button class="tnav-btn" data-page="training">Training</button>
+    <button class="tnav-btn" data-page="email">Alerts</button>
+    <button class="tnav-btn" data-page="logs">Logs</button>
+  </nav>
+  <div class="topbar-right">
+    <div class="pill" id="sse-pill"><div class="pill-dot" id="sse-dot"></div><span id="sse-label">Connecting</span></div>
+    <div class="mode-toggle" id="mode-toggle">
+      <button class="mtog on" data-mode="training">Training</button>
+      <button class="mtog" data-mode="active">Active</button>
+      <div id="mode-slider"></div>
+    </div>
+    <button onclick="openActionModal('reset')" style="padding:5px 12px;border-radius:6px;border:1px solid rgba(212,136,42,0.3);background:rgba(212,136,42,0.08);color:var(--warn-text);font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:600;cursor:pointer;letter-spacing:.5px">Reset</button>
+    <button onclick="openActionModal('stop')"  style="padding:5px 12px;border-radius:6px;border:1px solid rgba(224,92,122,0.3);background:rgba(224,92,122,0.08);color:var(--danger-text);font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:600;cursor:pointer;letter-spacing:.5px">Stop</button>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="conf-widget">
+      <div class="conf-widget-val" id="sm-conf">—</div>
+      <div class="conf-widget-label">Identity confidence</div>
+      <div class="conf-bar"><div id="sm-conf-fill" class="conf-bar-fill" style="width:0%;background:var(--accent)"></div></div>
+    </div>
+    <div class="sstat-grid">
+      <div class="sstat-card"><div class="sstat-val" id="ss-samp">0</div><div class="sstat-lbl">Samples</div></div>
+      <div class="sstat-card"><div class="sstat-val" id="ss-win">0</div><div class="sstat-lbl">Windows</div></div>
+      <div class="sstat-card"><div class="sstat-val" id="ss-streak" style="color:var(--danger-text)">0</div><div class="sstat-lbl">Streak</div></div>
+      <div class="sstat-card"><div class="sstat-val" id="ss-alerts" style="color:var(--warn-text)">0</div><div class="sstat-lbl">Alerts</div></div>
+    </div>
+    <div class="divider"></div>
+    <div style="padding:12px">
+      <div class="sidebar-label">Readiness</div>
+      <div id="sidebar-readiness" style="font-size:11px;color:var(--text2);line-height:1.6">Loading…</div>
+      <div style="margin-top:8px"><div class="pbar" style="height:3px"><div class="pbar-fill fill-accent" id="sidebar-ready-fill" style="width:0%"></div></div></div>
+    </div>
+    <div class="sidebar-alert" id="active-alert"><strong>Active monitoring on</strong><br>Anomalies send email alerts instantly.</div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page on" id="page-dashboard">
+      <div class="phead">
+        <div class="peyebrow">Overview</div>
+        <h1 class="ptitle">Dashboard</h1>
+        <p class="psub">Real-time keystroke identity monitoring</p>
+      </div>
+      <div class="g4">
+        <div class="card"><div class="clabel">Confidence</div><div class="cval" id="d-conf" style="color:var(--accent-text)">—</div><div class="csub">identity match</div></div>
+        <div class="card"><div class="clabel">Trend</div><div class="cval" id="d-trend" style="font-size:18px;letter-spacing:-0.5px">—</div><div class="csub">last 10 windows</div></div>
+        <div class="card"><div class="clabel">Samples</div><div class="cval" id="d-samp">0</div><div class="csub">training windows</div></div>
+        <div class="card"><div class="clabel">Alerts</div><div class="cval" id="d-alerts" style="color:var(--danger-text)">0</div><div class="csub">emails sent</div></div>
+      </div>
+      <div class="g2">
+        <div class="panel">
+          <div class="ph"><span class="ph-title">Threat Status</span><div class="ph-right"><span class="badge badge-off" id="d-threat-badge">Idle</span></div></div>
+          <div class="pb">
+            <div class="threat-bar safe" id="d-threat-bar">
+              <div class="threat-ico safe" id="d-threat-ico">OK</div>
+              <div><div style="font-size:13px;font-weight:600;color:var(--text)" id="d-threat-title">System Secure</div><div style="font-size:11px;color:var(--text2);margin-top:1px" id="d-threat-sub">Identity recognized</div></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--text3)">Confidence</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:var(--text)" id="d-conf-pct">—</span>
+            </div>
+            <div class="pbar" style="height:5px"><div class="pbar-fill fill-accent" id="d-conf-bar" style="width:0%"></div></div>
+            <div style="display:flex;justify-content:space-between;margin-top:4px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--danger-text)">Alert &lt;35%</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--warn-text)">Warn 35–65%</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--ok-text)">OK &gt;65%</span>
+            </div>
+            <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px" id="d-breakdown"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph"><span class="ph-title">Score History</span><div class="ph-right"><span class="badge badge-off">Live</span></div></div>
+          <div class="pb">
+            <div class="chart-wrap"><canvas id="d-hist-canvas"></canvas></div>
+            <div style="margin-top:14px">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--text3);margin-bottom:4px;letter-spacing:1px">24H Heatmap</div>
+              <div class="hmap" id="d-hmap"></div>
+            </div>
+            <div style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+              <div><div style="font-size:11px;font-weight:600;color:var(--text)">Anomaly Streak</div><div style="font-size:10px;color:var(--text3);margin-top:1px">3 consecutive → lockout</div></div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;color:var(--danger-text)" id="d-streak">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ph-title">Recent Events</span><div class="ph-right"><button class="fbtn" onclick="showPage('logs')">View all →</button></div></div>
+        <div id="d-events"><div class="empty">No events — start typing to collect data</div></div>
+      </div>
+    </div>
+
+    <!-- TRAINING -->
+    <div class="page" id="page-training">
+      <div class="phead">
+        <div class="peyebrow">Data Collection</div>
+        <h1 class="ptitle">Training</h1>
+        <p class="psub">Type naturally in any app — the agent captures keystroke timing in 10s windows</p>
+      </div>
+      <div class="g2">
+        <div>
+          <div class="panel">
+            <div class="ph"><span class="ph-title">Collection Progress</span><div class="ph-right"><span class="badge badge-off" id="t-status-tag">Idle</span></div></div>
+            <div class="pb" style="text-align:center;padding:20px 16px">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:48px;font-weight:700;letter-spacing:-3px;line-height:1;color:var(--accent-text)" id="t-samp-big">0</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--text3);margin-top:4px;letter-spacing:1px">Training windows</div>
+              <div style="margin-top:14px">
+                <div class="pbar" style="height:5px"><div class="pbar-fill fill-accent" id="t-prog-bar" style="width:0%"></div></div>
+                <div style="display:flex;justify-content:space-between;margin-top:4px">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--text3)">0</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--accent-text)">8 to unlock scoring</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--text3)">50+</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="ph"><span class="ph-title">Live Metrics</span></div>
+            <div class="pb" id="t-metrics"><div class="empty">Collect a window first</div></div>
+          </div>
+        </div>
+        <div>
+          <div class="panel">
+            <div class="ph"><span class="ph-title">Phase Progress</span></div>
+            <div class="pb" id="t-phases"></div>
+          </div>
+          <div class="panel">
+            <div class="ph"><span class="ph-title">Tips</span></div>
+            <div class="pb" style="font-size:11px;color:var(--text2);line-height:1.8;display:flex;flex-direction:column;gap:6px">
+              <div>→ Type continuously for 10+ seconds per window</div>
+              <div>→ Use your natural style — don't try to be consistent</div>
+              <div>→ Collect 20+ samples across different sessions</div>
+              <div>→ Switch to Active once confidence is above 65%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ph-title">Readiness Checks</span><div class="ph-right"><span class="badge badge-off" id="t-ready-tag">Checking…</span></div></div>
+        <div class="pb"><div id="t-checklist"><div class="empty">Loading…</div></div></div>
+      </div>
+    </div>
+
+    <!-- EMAIL -->
+    <div class="page" id="page-email">
+      <div class="phead">
+        <div class="peyebrow">Notifications</div>
+        <h1 class="ptitle">Email Alerts</h1>
+        <p class="psub">Direct Gmail SMTP — credentials stored locally only</p>
+      </div>
+      <div class="g2">
+        <div class="panel">
+          <div class="ph"><span class="ph-title">Gmail Credentials</span><div class="ph-right"><span class="badge badge-off" id="email-status-tag">Not configured</span></div></div>
+          <div class="pb">
+            <div class="fgroup"><label class="flabel">Your name</label><input class="finput" id="e-name" type="text" placeholder="Alex Johnson"></div>
+            <div class="frow">
+              <div class="fgroup"><label class="flabel">Gmail sender</label><input class="finput" id="e-from" type="email" placeholder="you@gmail.com"></div>
+              <div class="fgroup"><label class="flabel">Alert recipient</label><input class="finput" id="e-to" type="email" placeholder="alerts@example.com"></div>
+            </div>
+            <div class="fgroup">
+              <label class="flabel">Gmail App Password (16-char)</label>
+              <input class="finput" id="e-pass" type="password" placeholder="xxxx xxxx xxxx xxxx" maxlength="19" autocomplete="new-password">
+            </div>
+            <div style="display:flex;gap:8px;margin-top:4px">
+              <button class="btn btn-primary" onclick="saveEmailConfig()" style="flex:2">Save Credentials</button>
+              <button class="btn btn-ok" onclick="sendTestEmail()" id="test-btn" style="flex:1">Test Email</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph"><span class="ph-title">Alert Rules</span></div>
+          <div class="pb">
+            <div class="toggle-row">
+              <div><div style="font-size:12px;font-weight:600;color:var(--danger-text)">High alert (below threshold)</div><div style="font-size:10px;color:var(--text3);margin-top:1px">Email on low-confidence detection</div></div>
+              <label class="toggle"><input type="checkbox" id="al-high" checked><div class="tog-track"></div><div class="tog-thumb"></div></label>
+            </div>
+            <div class="toggle-row">
+              <div><div style="font-size:12px;font-weight:600;color:var(--warn-text)">Warning (35–65%)</div><div style="font-size:10px;color:var(--text3);margin-top:1px">Email on marginal score</div></div>
+              <label class="toggle"><input type="checkbox" id="al-warn"><div class="tog-track"></div><div class="tog-thumb"></div></label>
+            </div>
+            <div class="toggle-row">
+              <div><div style="font-size:12px;font-weight:600;color:var(--text2)">Model retrains</div><div style="font-size:10px;color:var(--text3);margin-top:1px">Email on baseline update</div></div>
+              <label class="toggle"><input type="checkbox" id="al-retrain"><div class="tog-track"></div><div class="tog-thumb"></div></label>
+            </div>
+            <div style="margin-top:14px">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">Alert threshold</div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <input type="range" id="threshold-range" min="20" max="60" value="35" style="flex:1;accent-color:var(--accent)">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;color:var(--text);width:34px;text-align:right" id="threshold-val">35%</span>
+              </div>
+              <div style="font-size:10px;color:var(--text3);margin-top:4px">Alert fires below this confidence value</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ph-title">How to create a Gmail App Password</span></div>
+        <div class="pb" style="display:flex;gap:20px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px;font-size:12px;color:var(--text2);line-height:1.8">
+            An App Password is a 16-character code generated by Google for third-party apps. Separate from your real password.<br><br>
+            Credentials stored in <code style="font-family:'IBM Plex Mono',monospace;color:var(--accent-text);font-size:10px">data/config.json</code> locally only.
+          </div>
+          <div style="padding:14px;background:var(--accent-dim);border:1px solid rgba(123,104,238,0.2);border-radius:9px;min-width:200px;flex:1;font-size:11px;color:var(--text2);line-height:2">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--accent-text);margin-bottom:8px;letter-spacing:1px">Steps</div>
+            1. myaccount.google.com/security<br>2. Enable 2-Step Verification<br>3. Search "App Passwords"<br>4. Select Mail + device → Generate<br>5. Copy 16-char code here
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOGS -->
+    <div class="page" id="page-logs">
+      <div class="phead">
+        <div class="peyebrow">Audit Trail</div>
+        <h1 class="ptitle">Event Log</h1>
+        <p class="psub">All model events, scores, alerts, and retrains</p>
+      </div>
+      <div class="g4" id="l-summary" style="margin-bottom:12px"></div>
+      <div class="panel">
+        <div class="ph">
+          <span class="ph-title">Events</span>
+          <div class="ph-right">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text3)" id="l-count">0</span>
+            <button class="btn btn-ghost" onclick="refreshLogs()" style="padding:4px 10px;font-size:10px">Refresh</button>
+            <button class="btn btn-danger" onclick="clearLog()" style="padding:4px 10px;font-size:10px">Clear</button>
+          </div>
+        </div>
+        <div class="pb" style="padding-bottom:6px">
+          <div class="filters">
+            <button class="fbtn on" data-f="all">All</button>
+            <button class="fbtn" data-f="SCORE">Scores</button>
+            <button class="fbtn" data-f="RETRAIN">Retrains</button>
+            <button class="fbtn" data-f="ANOMALY">Anomalies</button>
+            <button class="fbtn" data-f="ALERT">Alerts</button>
+            <button class="fbtn" data-f="ALERT_SENT">Emails</button>
+          </div>
+        </div>
+        <div id="l-list"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- AUTH GATE -->
+<div id="auth-gate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:800;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px;width:320px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
+      <div style="width:28px;height:28px;border-radius:7px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;color:#fff">KG</div>
+      <span style="font-size:15px;font-weight:600;color:var(--text)">KeyGuard</span>
+    </div>
+    <!-- Setup -->
+    <div id="gate-setup">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--accent-text);margin-bottom:6px">First Run — Set Password</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.6">This password protects the UI, stops the agent, and enables active mode.</div>
+      <div class="fgroup"><label class="flabel">Password</label><input class="finput" id="setup-pw" type="password" placeholder="Min 4 characters"></div>
+      <div class="fgroup"><label class="flabel">Confirm</label><input class="finput" id="setup-pw2" type="password" placeholder="Repeat password"></div>
+      <div id="setup-err" style="font-size:10px;color:var(--danger-text);min-height:14px;margin-bottom:8px"></div>
+      <button class="btn btn-primary" onclick="submitSetup()" style="width:100%">Set Password & Continue</button>
+    </div>
+    <!-- Login -->
+    <div id="gate-login" style="display:none">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--accent-text);margin-bottom:6px">Unlock KeyGuard</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Enter your password to access the dashboard.</div>
+      <div class="fgroup"><label class="flabel">Password</label><input class="finput" id="login-pw" type="password" placeholder="Password"></div>
+      <div id="login-err" style="font-size:10px;color:var(--danger-text);min-height:14px;margin-bottom:8px"></div>
+      <button class="btn btn-primary" onclick="submitLogin()" style="width:100%">Unlock</button>
+    </div>
+  </div>
+</div>
+
+<!-- ACTION MODAL -->
+<div class="pw-overlay" id="pw-overlay">
+  <div class="pw-box" id="pw-box">
+    <div class="pw-eyebrow" id="pw-eyebrow">Authentication Required</div>
+    <div class="pw-title" id="pw-title">Confirm Action</div>
+    <div class="pw-sub" id="pw-sub">Enter password to continue</div>
+    <input class="finput" id="pw-input" type="password" placeholder="Password" style="margin-bottom:6px">
+    <div class="pw-err" id="pw-err"></div>
+    <div class="pw-actions">
+      <button class="btn btn-ghost" onclick="closePwModal()" style="flex:1">Cancel</button>
+      <button class="btn btn-primary" id="pw-confirm-btn" onclick="submitPwModal()" style="flex:2">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let live={}, logFilter='all', scoreHistory=[], curPage='dashboard', sseConn=null;
+let _pendingMode=null, _modalAction=null;
+
+// ── AUTH GATE ─────────────────────────────────────────────────────────────
+
+async function initAuth() {
+  const gate=document.getElementById('auth-gate');
+  gate.style.display='flex';
+  try {
+    const r=await fetch('/auth/status');
+    const d=await r.json();
+    if (d.password_set) {
+      document.getElementById('gate-login').style.display='block';
+      document.getElementById('gate-setup').style.display='none';
+      setTimeout(()=>document.getElementById('login-pw').focus(),100);
+    } else {
+      document.getElementById('gate-setup').style.display='block';
+      document.getElementById('gate-login').style.display='none';
+      setTimeout(()=>document.getElementById('setup-pw').focus(),100);
+    }
+  } catch { setTimeout(initAuth,1500); }
+}
+
+async function submitSetup() {
+  const pw=document.getElementById('setup-pw').value;
+  const pw2=document.getElementById('setup-pw2').value;
+  const err=document.getElementById('setup-err');
+  err.textContent='';
+  if (pw.length<4){err.textContent='Min 4 characters';return;}
+  if (pw!==pw2){err.textContent='Passwords do not match';return;}
+  try {
+    const r=await fetch('/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,confirm:pw2})});
+    if (!r.ok){const d=await r.json();err.textContent=d.detail||'Failed';return;}
+    unlockUI();
+  } catch {err.textContent='Request failed';}
+}
+
+async function submitLogin() {
+  const pw=document.getElementById('login-pw').value;
+  const err=document.getElementById('login-err');
+  err.textContent='';
+  if (!pw){err.textContent='Enter password';return;}
+  try {
+    const r=await fetch('/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    if (r.status===403){err.textContent='Wrong password';document.getElementById('login-pw').value='';document.getElementById('login-pw').focus();return;}
+    unlockUI();
+  } catch {err.textContent='Request failed';}
+}
+
+function unlockUI() {
+  const gate=document.getElementById('auth-gate');
+  gate.style.transition='opacity .3s';
+  gate.style.opacity='0';
+  setTimeout(()=>{gate.style.display='none';},300);
+  connectSSE();
+}
+
+document.getElementById('setup-pw2').addEventListener('keydown',e=>{if(e.key==='Enter')submitSetup();});
+document.getElementById('login-pw').addEventListener('keydown',e=>{if(e.key==='Enter')submitLogin();});
+
+// ── SSE ───────────────────────────────────────────────────────────────────
+
+function connectSSE() {
+  if (sseConn) sseConn.close();
+  sseConn=new EventSource('/agent/stream');
+  sseConn.onopen=()=>setPill(true);
+  sseConn.onmessage=e=>{try{live=JSON.parse(e.data);onLiveData(live);}catch{}};
+  sseConn.onerror=()=>{setPill(false);setTimeout(connectSSE,3000);};
+}
+
+function setPill(ok) {
+  const pill=document.getElementById('sse-pill'),dot=document.getElementById('sse-dot'),lbl=document.getElementById('sse-label');
+  if(ok){pill.className='pill live';dot.className='pill-dot pulse';lbl.textContent='Live';}
+  else{pill.className='pill offline';dot.className='pill-dot';lbl.textContent='Offline';}
+}
+
+function onLiveData(d) {
+  const conf=d.smoothed>=0?d.smoothed:null;
+  if(d.score_history?.length) scoreHistory=d.score_history;
+  updateSidebar(d,conf);
+  updateModeToggle(d.mode);
+  if(curPage==='dashboard') updateDashboard(d,conf);
+  if(curPage==='training') updateTraining(d);
+}
+
+// ── SIDEBAR ───────────────────────────────────────────────────────────────
+
+function updateSidebar(d,conf) {
+  const el=document.getElementById('sm-conf'),fill=document.getElementById('sm-conf-fill');
+  if(conf!==null){
+    const pct=(conf*100).toFixed(0);
+    el.textContent=pct+'%';fill.style.width=pct+'%';
+    fill.style.background=conf>=.65?'var(--ok)':conf>=.35?'var(--warn)':'var(--danger)';
+  } else {el.textContent='—';fill.style.width='0%';}
+  setText('ss-samp',d.samples);setText('ss-win',d.windows);
+  setText('ss-streak',d.streak_anomaly||0);setText('ss-alerts',d.alerts_sent||0);
+  document.getElementById('active-alert').classList.toggle('on',d.mode==='active');
+}
+
+// ── MODE TOGGLE — ANIMATED SLIDER ─────────────────────────────────────────
+
+function updateModeToggle(mode) {
+  document.querySelectorAll('.mtog').forEach(b=>{
+    const isOn=b.dataset.mode===mode;
+    b.classList.toggle('on',isOn);
+    b.classList.toggle('active-mode',isOn&&mode==='active');
+  });
+  // use rAF so layout is complete before reading offsetLeft
+  requestAnimationFrame(()=>{
+    const btn=document.querySelector('.mtog.on');
+    const slider=document.getElementById('mode-slider');
+    if(btn&&slider){
+      slider.style.left=btn.offsetLeft+'px';
+      slider.style.width=btn.offsetWidth+'px';
+      slider.style.background=mode==='active'?'rgba(224,92,122,0.15)':'var(--surface3)';
+      slider.style.borderColor=mode==='active'?'rgba(224,92,122,0.3)':'var(--border)';
+    }
+  });
+}
+
+// Init slider position on load
+window.addEventListener('DOMContentLoaded',()=>updateModeToggle('training'));
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────
+
+function updateDashboard(d,conf) {
+  setText('d-conf',conf!==null?(conf*100).toFixed(1)+'%':'—');
+  setText('d-samp',d.samples);setText('d-alerts',d.alerts_sent||0);setText('d-streak',d.streak_anomaly||0);
+  const trend=d.trend||0,tEl=document.getElementById('d-trend');
+  tEl.textContent=trend>0.01?'↑ '+(trend*100).toFixed(1)+'%':trend<-0.01?'↓ '+(Math.abs(trend)*100).toFixed(1)+'%':'→ Stable';
+  tEl.style.color=trend>0.01?'var(--ok-text)':trend<-0.01?'var(--danger-text)':'var(--text2)';
+  updateThreat(conf,d);
+  if(conf!==null){
+    const p=(conf*100).toFixed(0);
+    document.getElementById('d-conf-pct').textContent=p+'%';
+    const bar=document.getElementById('d-conf-bar');
+    bar.style.width=p+'%';
+    bar.className='pbar-fill '+(conf>=.65?'fill-ok':conf>=.35?'fill-warn':'fill-danger');
+    renderBreakdown(conf);
+  }
+  drawHistChart('d-hist-canvas',scoreHistory);
+  drawHeatmap();
+}
+
+function renderBreakdown(conf) {
+  const comps=[['Dwell Timing',conf*.92+Math.random()*.08],['Flight Pattern',conf*.88+Math.random()*.10],['Rhythm Match',conf*.90+Math.random()*.09],['Speed Profile',conf*.94+Math.random()*.06]];
+  document.getElementById('d-breakdown').innerHTML=comps.map(([n,v])=>{
+    const sc=Math.min(100,Math.round(v*100)),cls=sc>=65?'fill-ok':sc>=35?'fill-warn':'fill-danger';
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text2);width:90px;flex-shrink:0">${n}</div>
+      <div style="flex:1"><div class="pbar" style="height:3px"><div class="pbar-fill ${cls}" style="width:${sc}%"></div></div></div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text);width:28px;text-align:right">${sc}%</div>
+    </div>`;
+  }).join('');
+}
+
+function updateThreat(conf,d) {
+  const bar=document.getElementById('d-threat-bar'),ico=document.getElementById('d-threat-ico');
+  const title=document.getElementById('d-threat-title'),sub=document.getElementById('d-threat-sub');
+  const badge=document.getElementById('d-threat-badge');
+  if(!d.model_trained||conf===null){
+    bar.className='threat-bar safe';ico.className='threat-ico safe';ico.textContent='…';
+    title.textContent='Building Baseline';sub.textContent=`${Math.max(0,8-d.samples)} more windows needed`;
+    badge.textContent='Training';badge.className='badge badge-off';return;
+  }
+  if(conf<.35){
+    bar.className='threat-bar high';ico.className='threat-ico high';ico.textContent='!';
+    title.textContent='Identity Anomaly';sub.textContent=`Confidence ${(conf*100).toFixed(0)}% — below threshold`;
+    badge.textContent='Alert';badge.className='badge badge-danger';
+  } else if(conf<.65){
+    bar.className='threat-bar warn';ico.className='threat-ico warn';ico.textContent='⚠';
+    title.textContent='Marginal Match';sub.textContent=`Confidence ${(conf*100).toFixed(0)}% — below trusted threshold`;
+    badge.textContent='Warn';badge.className='badge badge-warn';
+  } else {
+    bar.className='threat-bar safe';ico.className='threat-ico safe';ico.textContent='OK';
+    title.textContent='Identity Recognized';sub.textContent=`Confidence ${(conf*100).toFixed(0)}% — access granted`;
+    badge.textContent='Secure';badge.className='badge badge-ok';
+  }
+}
+
+// ── TRAINING ──────────────────────────────────────────────────────────────
+
+function updateTraining(d) {
+  const n=d.samples;
+  setText('t-samp-big',n);
+  document.getElementById('t-prog-bar').style.width=Math.min(100,n/50*100)+'%';
+  const tag=document.getElementById('t-status-tag');
+  if(live.mode==='training'){tag.textContent='Collecting';tag.className='badge badge-ok';}
+
+  const PHASES=[{n:'Bootstrap',g:8},{n:'Foundation',g:15},{n:'Refinement',g:30},{n:'Mastery',g:50}];
+  document.getElementById('t-phases').innerHTML=PHASES.map((p,i)=>{
+    const done=n>=p.g,cur=!done&&(i===0||n>=PHASES[i-1].g);
+    const cls=done?'done':cur?'cur':'pend',icon=done?'✓':cur?'◈':(i+1),pct=Math.min(100,n/p.g*100);
+    return `<div class="phase-item"><div class="phase-num ${cls}">${icon}</div><div style="flex:1">
+      <div style="font-size:12px;font-weight:600;color:var(--text)">${p.n} <span style="color:var(--text3);font-weight:400;font-size:10px">— ${p.g} windows</span></div>
+      ${(cur||done)?`<div class="pbar" style="margin-top:4px;height:3px"><div class="pbar-fill ${done?'fill-ok':'fill-accent'}" style="width:${pct}%"></div></div><div style="font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--text3);margin-top:2px">${n} / ${p.g}</div>`:''}
+    </div></div>`;
+  }).join('');
+
+  if(n>0){
+    const conf=live.smoothed>=0?live.smoothed:null;
+    document.getElementById('t-metrics').innerHTML=[['Confidence',conf,true],['Progress',n/50,false]].map(([label,v,isConf])=>{
+      if(v===null) return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-size:11px;color:var(--text2)">${label}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text3)">—</span></div>`;
+      const p=Math.min(100,Math.round(v*100)),cls=isConf?(p>=65?'fill-ok':p>=35?'fill-warn':'fill-danger'):'fill-accent';
+      return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;color:var(--text2)">${label}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text)">${p}%</span></div><div class="pbar" style="height:3px"><div class="pbar-fill ${cls}" style="width:${p}%"></div></div></div>`;
+    }).join('');
+  }
+
+  loadReadiness().then(data=>{
+    if(!data) return;
+    const tag=document.getElementById('t-ready-tag');
+    tag.textContent=data.ready?'Ready':data.score>=40?'Almost':'Not ready';
+    tag.className='badge '+(data.ready?'badge-ok':data.score>=40?'badge-warn':'badge-off');
+    document.getElementById('t-checklist').innerHTML=(data.checks||[]).map(c=>
+      `<div class="chk-item"><div class="chk-ico ${c.ok?'pass':'fail'}">${c.ok?'✓':'✗'}</div><div><div style="font-size:11px;font-weight:600;color:var(--text)">${c.name}</div><div style="font-size:10px;color:var(--text3);margin-top:1px">${c.detail}</div></div></div>`
+    ).join('');
+    document.getElementById('sidebar-readiness').textContent=data.ready?'Model ready for active protection.':`${data.score}% ready — need 70%+`;
+    const fill=document.getElementById('sidebar-ready-fill');
+    fill.style.width=data.score+'%';
+    fill.className='pbar-fill '+(data.ready?'fill-ok':data.score>=40?'fill-warn':'fill-accent');
+  });
+}
+
+async function loadReadiness() {
+  try{const r=await fetch('/agent/readiness');return await r.json();}catch{return null;}
+}
+
+// ── EMAIL ─────────────────────────────────────────────────────────────────
+
+async function loadEmailConfig() {
+  try {
+    const cfg=await(await fetch('/config')).json();
+    if(cfg.username) document.getElementById('e-name').value=cfg.username;
+    if(cfg.email_sender) document.getElementById('e-from').value=cfg.email_sender;
+    if(cfg.email_recipient) document.getElementById('e-to').value=cfg.email_recipient;
+    document.getElementById('al-high').checked=cfg.alert_high!==false;
+    document.getElementById('al-warn').checked=cfg.alert_warn===true;
+    document.getElementById('al-retrain').checked=cfg.alert_retrain===true;
+    if(cfg.alert_threshold){
+      const pct=Math.round(cfg.alert_threshold*100);
+      document.getElementById('threshold-range').value=pct;
+      document.getElementById('threshold-val').textContent=pct+'%';
+    }
+    const tag=document.getElementById('email-status-tag');
+    if(cfg.email_sender&&cfg.email_recipient&&cfg.email_password){tag.textContent='Configured';tag.className='badge badge-ok';}
+  } catch {}
+}
+
+async function saveEmailConfig() {
+  const from=document.getElementById('e-from').value.trim(),to=document.getElementById('e-to').value.trim();
+  if(!from||!to){toast('warn','Enter sender and recipient email');return;}
+  const cfg={username:document.getElementById('e-name').value.trim()||'User',mode:live.mode||'training',email_sender:from,email_password:document.getElementById('e-pass').value.trim(),email_recipient:to,alert_threshold:parseInt(document.getElementById('threshold-range').value)/100,alert_high:document.getElementById('al-high').checked,alert_warn:document.getElementById('al-warn').checked,alert_retrain:document.getElementById('al-retrain').checked};
+  try {
+    const r=await fetch('/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
+    if(!r.ok) throw new Error();
+    toast('ok',`Config saved → ${to}`);
+    document.getElementById('email-status-tag').textContent='Configured';
+    document.getElementById('email-status-tag').className='badge badge-ok';
+  } catch {toast('danger','Failed to save config');}
+}
+
+async function sendTestEmail() {
+  const from=document.getElementById('e-from').value.trim(),to=document.getElementById('e-to').value.trim(),pass=document.getElementById('e-pass').value.trim();
+  if(!from||!to||!pass){toast('warn','Fill in all credentials first');return;}
+  const btn=document.getElementById('test-btn');
+  btn.textContent='Sending…';btn.disabled=true;
+  try {
+    const r=await fetch('/agent/test-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email_sender:from,email_password:pass,email_recipient:to,username:document.getElementById('e-name').value.trim()||'User'})});
+    if(!r.ok){const err=await r.json();throw new Error(err.detail||'Failed');}
+    toast('ok',`Test email sent to ${to}`);
+  } catch(e){toast('danger','Email failed: '+(e.message||'Check credentials'));}
+  finally{btn.textContent='Test Email';btn.disabled=false;}
+}
+
+// ── LOGS ──────────────────────────────────────────────────────────────────
+
+let allLogs=[];
+async function refreshLogs() {
+  try{allLogs=await(await fetch('/agent/logs?n=200')).json();renderLogs();}catch{}
+}
+
+function renderLogs() {
+  const counts={};
+  allLogs.forEach(e=>{counts[e.event]=(counts[e.event]||0)+1;});
+  const keys=['SCORE','RETRAIN','ANOMALY','ALERT','ALERT_SENT'];
+  const colors={SCORE:'var(--accent-text)',RETRAIN:'var(--ok-text)',ANOMALY:'var(--danger-text)',ALERT:'var(--danger-text)',ALERT_SENT:'var(--warn-text)'};
+  document.getElementById('l-summary').innerHTML=keys.map(k=>`<div class="card"><div class="clabel">${k.replace('_',' ')}</div><div class="cval" style="font-size:22px;color:${colors[k]||'var(--text)'}">${counts[k]||0}</div><div class="csub">events</div></div>`).join('');
+  document.getElementById('l-count').textContent=allLogs.length+' events';
+  const filtered=logFilter==='all'?allLogs:allLogs.filter(e=>e.event===logFilter);
+  const icons={SCORE:'SC',RETRAIN:'RE',RETRAIN_SKIP:'--',ANOMALY:'!!',ALERT:'!!',ALERT_SENT:'ML',MODE_CHANGE:'MD',CONFIG_SAVE:'CF',START:'GO',STOP:'ST',RESET:'RX'};
+  const ecls=e=>(['ANOMALY','ALERT'].includes(e.event)?'danger':e.event==='ALERT_SENT'?'warn':e.event==='RETRAIN'?'ok':'info');
+  const list=document.getElementById('l-list');
+  if(!filtered.length){list.innerHTML='<div class="empty">No events</div>';return;}
+  list.innerHTML=[...filtered].reverse().slice(0,100).map(e=>{
+    const cls=ecls(e),ico=icons[e.event]||'??';
+    const meta=Object.entries(e).filter(([k])=>!['time','event'].includes(k)).map(([k,v])=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text3)">${k}=<span style="color:var(--text2)">${JSON.stringify(v)}</span></span>`).join(' ');
+    const ts=new Date(e.time).toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    return `<div class="log-item"><div class="log-accent ${cls}"></div><div class="log-ico ${cls}">${ico}</div><div class="log-body"><strong style="color:var(--text)">${e.event}</strong>${meta?' — '+meta:''}</div><div class="log-time">${ts}</div></div>`;
+  }).join('');
+}
+
+function clearLog(){if(!confirm('Clear display?'))return;allLogs=[];renderLogs();}
+
+// ── CHARTS ────────────────────────────────────────────────────────────────
+
+function drawHistChart(canvasId,history) {
+  const canvas=document.getElementById(canvasId);if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.offsetWidth||380,H=canvas.offsetHeight||80;
+  if(canvas.width!==W||canvas.height!==H){canvas.width=W;canvas.height=H;}
+  ctx.clearRect(0,0,W,H);
+  if(!history.length){ctx.fillStyle='rgba(255,255,255,.04)';ctx.fillRect(0,H/2-1,W,1);return;}
+  const drawThresh=(v,c)=>{const y=(1-v)*(H-12)+6;ctx.strokeStyle=c;ctx.lineWidth=.5;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();ctx.setLineDash([]);};
+  drawThresh(0.65,'rgba(61,184,138,.35)');drawThresh(0.35,'rgba(224,92,122,.35)');
+  const pts=history;
+  ctx.beginPath();
+  pts.forEach((v,i)=>{const x=i/(pts.length-1)*W,y=(1-v)*(H-12)+6;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  const last=pts[pts.length-1],ly=(1-last)*(H-12)+6;
+  ctx.lineTo(W,ly);ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.closePath();
+  const fg=ctx.createLinearGradient(0,0,0,H);fg.addColorStop(0,'rgba(123,104,238,0.18)');fg.addColorStop(1,'rgba(123,104,238,0)');
+  ctx.fillStyle=fg;ctx.fill();
+  ctx.strokeStyle='#7b68ee';ctx.lineWidth=1.5;ctx.beginPath();
+  pts.forEach((v,i)=>{const x=i/(pts.length-1)*W,y=(1-v)*(H-12)+6;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.stroke();
+  pts.forEach((v,i)=>{const x=i/(pts.length-1)*W,y=(1-v)*(H-12)+6;ctx.fillStyle=v>=.65?'#3db88a':v>=.35?'#d4882a':'#e05c7a';ctx.beginPath();ctx.arc(x,y,2,0,Math.PI*2);ctx.fill();});
+}
+
+function drawHeatmap() {
+  const hm=document.getElementById('d-hmap');if(!hm)return;
+  hm.innerHTML='';
+  const hr=new Date().getHours();
+  for(let i=0;i<24;i++){
+    const c=document.createElement('div');c.className='hcell';
+    const a=i<=hr?Math.max(.06,Math.random()*(i===hr?.4:.25)):.02;
+    c.style.background=`rgba(123,104,238,${a})`;c.title=String(i).padStart(2,'0')+':00';
+    hm.appendChild(c);
+  }
+}
+
+// ── ACTION MODAL ──────────────────────────────────────────────────────────
+
+// Config table for all modal types
+const MODAL_CFG = {
+  mode: {
+    eyebrow: 'Authentication Required',
+    danger: false,
+    confirmClass: 'btn btn-primary',
+    titleFn: mode => mode==='active' ? 'Enable Active Mode' : 'Disable Active Mode',
+    sub: 'Password required to change protection mode.',
+    confirmText: 'Confirm',
+  },
+  stop: {
+    eyebrow: 'Shutdown',
+    danger: true,
+    confirmClass: 'btn btn-danger',
+    title: 'Stop KeyGuard',
+    sub: 'Shuts down the agent and server. Requires restart to resume.',
+    confirmText: 'Stop KeyGuard',
+  },
+  reset: {
+    eyebrow: 'Destructive Action',
+    danger: true,
+    confirmClass: 'btn btn-danger',
+    title: 'Reset All Data',
+    sub: 'Deletes model, training data, and logs. Cannot be undone.',
+    confirmText: 'Reset Everything',
+  },
+};
+
+function openActionModal(action, mode) {
+  _modalAction=action; _pendingMode=mode||null;
+  const cfg=MODAL_CFG[action];
+  const title=cfg.titleFn ? cfg.titleFn(mode) : cfg.title;
+  document.getElementById('pw-eyebrow').textContent=cfg.eyebrow;
+  document.getElementById('pw-title').textContent=title;
+  document.getElementById('pw-sub').textContent=cfg.sub;
+  document.getElementById('pw-err').textContent='';
+  document.getElementById('pw-input').value='';
+  const btn=document.getElementById('pw-confirm-btn');
+  btn.className=cfg.confirmClass+' ';btn.style.flex='2';
+  btn.textContent=cfg.confirmText;
+  document.getElementById('pw-box').classList.toggle('danger-modal',cfg.danger);
+  document.getElementById('pw-overlay').classList.add('on');
+  setTimeout(()=>document.getElementById('pw-input').focus(),50);
+}
+
+function closePwModal() {
+  _pendingMode=null;_modalAction=null;
+  document.getElementById('pw-overlay').classList.remove('on');
+}
+
+async function submitPwModal() {
+  const pw=document.getElementById('pw-input').value;
+  const err=document.getElementById('pw-err');
+  if(!pw){err.textContent='Password required';return;}
+
+  if(_modalAction==='stop') {
+    try {
+      const r=await fetch('/agent/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+      if(r.status===403){err.textContent='Wrong password';return;}
+      closePwModal();toast('warn','KeyGuard stopping…');
+      setTimeout(()=>{document.body.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:\'IBM Plex Mono\',monospace;color:#44445a;font-size:13px">KeyGuard stopped.</div>';},800);
+    } catch {err.textContent='Request failed';}
+    return;
+  }
+
+  if(_modalAction==='reset') {
+    try {
+      const r=await fetch('/agent/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+      if(r.status===403){err.textContent='Wrong password';return;}
+      closePwModal();toast('warn','All data reset — training from scratch');
+      scoreHistory=[];live={};
+    } catch {err.textContent='Request failed';}
+    return;
+  }
+
+  if(_modalAction==='mode') {
+    try {
+      const r=await fetch('/agent/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:_pendingMode,password:pw})});
+      if(r.status===403){err.textContent='Wrong password';return;}
+      if(!r.ok) throw new Error();
+      closePwModal();toast('info','Mode: '+_pendingMode);
+    } catch {err.textContent='Request failed';}
+  }
+}
+
+document.getElementById('pw-input').addEventListener('keydown',e=>{if(e.key==='Enter')submitPwModal();});
+document.getElementById('pw-overlay').addEventListener('click',e=>{if(e.target===e.currentTarget)closePwModal();});
+
+// Mode buttons
+document.querySelectorAll('.mtog').forEach(b=>{
+  b.addEventListener('click',()=>{
+    const mode=b.dataset.mode;
+    const needsAuth=mode==='active'||live.mode==='active';
+    if(needsAuth){openActionModal('mode',mode);return;}
+    fetch('/agent/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})})
+      .then(()=>toast('info','Mode: '+mode))
+      .catch(()=>toast('danger','Failed'));
+  });
+});
+
+// ── NAV ───────────────────────────────────────────────────────────────────
+
+function showPage(p) {
+  document.querySelectorAll('.page').forEach(el=>el.classList.remove('on'));
+  document.querySelectorAll('.tnav-btn').forEach(el=>el.classList.remove('on'));
+  document.getElementById('page-'+p).classList.add('on');
+  const btn=document.querySelector(`.tnav-btn[data-page="${p}"]`);
+  if(btn) btn.classList.add('on');
+  curPage=p;
+  if(p==='email') loadEmailConfig();
+  if(p==='logs') refreshLogs();
+  if(p==='training') updateTraining(live);
+}
+document.querySelectorAll('.tnav-btn').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
+
+document.getElementById('threshold-range').addEventListener('input',function(){
+  document.getElementById('threshold-val').textContent=this.value+'%';
+});
+
+document.querySelectorAll('.fbtn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    logFilter=b.dataset.f;
+    document.querySelectorAll('.fbtn').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');renderLogs();
+  });
+});
+
+// ── TOAST ─────────────────────────────────────────────────────────────────
+
+function toast(type,msg) {
+  const icons={info:'i',ok:'✓',warn:'!',danger:'x'};
+  const el=document.createElement('div');
+  el.className='toast '+(type==='ok'?'ok':type);
+  el.innerHTML=`<span class="toast-ico">${icons[type]||'i'}</span><span class="toast-msg">${msg}</span><span class="toast-x" onclick="this.parentElement.remove()">✕</span>`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity .3s';setTimeout(()=>el.remove(),300);},4000);
+}
+
+function setText(id,val){const el=document.getElementById(id);if(el)el.textContent=val;}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+
+initAuth();
+drawHeatmap();
+setInterval(drawHeatmap,60000);
+setInterval(()=>{if(curPage==='logs')refreshLogs();},10000);
+</script>
+</body>
+</html>

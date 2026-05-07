@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+data/
+data/config.json
+data/*.npy
+data/*.pkl
+data/logs.json
+
+build/
+dist/
+*.spec
