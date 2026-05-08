@@ -493,7 +493,7 @@ body{background:var(--bg);color:var(--text);display:flex;flex-direction:column}
 
 <script>
 let live={}, logFilter='all', scoreHistory=[], curPage='dashboard', sseConn=null;
-let _pendingMode=null, _modalAction=null;
+let _pendingMode=null, _modalAction=null, _token=null;
 
 // ── AUTH GATE ─────────────────────────────────────────────────────────────
 
@@ -525,6 +525,9 @@ async function submitSetup() {
   try {
     const r=await fetch('/auth/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,confirm:pw2})});
     if (!r.ok){const d=await r.json();err.textContent=d.detail||'Failed';return;}
+    // after setup, log in to get token
+    const r2=await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw,confirm:pw})});
+    const d2=await r2.json(); _token=d2.token;
     unlockUI();
   } catch {err.textContent='Request failed';}
 }
@@ -535,8 +538,10 @@ async function submitLogin() {
   err.textContent='';
   if (!pw){err.textContent='Enter password';return;}
   try {
-    const r=await fetch('/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    const r=await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
     if (r.status===403){err.textContent='Wrong password';document.getElementById('login-pw').value='';document.getElementById('login-pw').focus();return;}
+    const d=await r.json();
+    _token=d.token;
     unlockUI();
   } catch {err.textContent='Request failed';}
 }
@@ -723,20 +728,22 @@ async function loadReadiness() {
 
 async function loadEmailConfig() {
   try {
-    const cfg=await(await fetch('/config')).json();
+    const cfg=await(await fetch('/config?token='+(_token||''))).json();
     if(cfg.username) document.getElementById('e-name').value=cfg.username;
     if(cfg.email_sender) document.getElementById('e-from').value=cfg.email_sender;
     if(cfg.email_recipient) document.getElementById('e-to').value=cfg.email_recipient;
+    // password never returned — show placeholder if set
+    if(cfg.email_password_set) document.getElementById('e-pass').placeholder='••••••••••••••• (saved)';
     document.getElementById('al-high').checked=cfg.alert_high!==false;
     document.getElementById('al-warn').checked=cfg.alert_warn===true;
     document.getElementById('al-retrain').checked=cfg.alert_retrain===true;
-    if(cfg.alert_threshold){
+    if(cfg.alert_threshold!=null){
       const pct=Math.round(cfg.alert_threshold*100);
       document.getElementById('threshold-range').value=pct;
       document.getElementById('threshold-val').textContent=pct+'%';
     }
     const tag=document.getElementById('email-status-tag');
-    if(cfg.email_sender&&cfg.email_recipient&&cfg.email_password){tag.textContent='Configured';tag.className='badge badge-ok';}
+    if(cfg.email_sender&&cfg.email_recipient&&cfg.email_password_set){tag.textContent='Configured';tag.className='badge badge-ok';}
   } catch {}
 }
 
@@ -745,7 +752,7 @@ async function saveEmailConfig() {
   if(!from||!to){toast('warn','Enter sender and recipient email');return;}
   const cfg={username:document.getElementById('e-name').value.trim()||'User',mode:live.mode||'training',email_sender:from,email_password:document.getElementById('e-pass').value.trim(),email_recipient:to,alert_threshold:parseInt(document.getElementById('threshold-range').value)/100,alert_high:document.getElementById('al-high').checked,alert_warn:document.getElementById('al-warn').checked,alert_retrain:document.getElementById('al-retrain').checked};
   try {
-    const r=await fetch('/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
+    const r=await fetch('/config?token='+(_token||''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
     if(!r.ok) throw new Error();
     toast('ok',`Config saved → ${to}`);
     document.getElementById('email-status-tag').textContent='Configured';
@@ -884,6 +891,7 @@ function closePwModal() {
 }
 
 async function submitPwModal() {
+  const r=await fetch('/agent/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:_pendingMode,password:pw,token:_token})});
   const pw=document.getElementById('pw-input').value;
   const err=document.getElementById('pw-err');
   if(!pw){err.textContent='Password required';return;}
@@ -927,7 +935,7 @@ document.querySelectorAll('.mtog').forEach(b=>{
     const mode=b.dataset.mode;
     const needsAuth=mode==='active'||live.mode==='active';
     if(needsAuth){openActionModal('mode',mode);return;}
-    fetch('/agent/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})})
+    fetch('/agent/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,token:_token})})
       .then(()=>toast('info','Mode: '+mode))
       .catch(()=>toast('danger','Failed'));
   });

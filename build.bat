@@ -1,5 +1,6 @@
 @echo off
-pip install pyinstaller bcrypt
+pip install pyinstaller bcrypt cryptography keyring
+
 pyinstaller --onefile --noconsole --name KeyGuard ^
   --add-data "static;static" ^
   --hidden-import sklearn.ensemble._iforest ^
@@ -13,7 +14,10 @@ pyinstaller --onefile --noconsole --name KeyGuard ^
   --hidden-import uvicorn.protocols.http.auto ^
   --hidden-import uvicorn.lifespan.off ^
   --hidden-import bcrypt ^
+  --hidden-import cryptography ^
+  --hidden-import keyring.backends.Windows ^
   run.py
+
 echo.
 echo Done — dist\KeyGuard.exe
 pause
