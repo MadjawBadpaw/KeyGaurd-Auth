@@ -11,3 +11,4 @@ data/logs.json
 build/
 dist/
 *.spec
+claude.md
