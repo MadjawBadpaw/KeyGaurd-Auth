@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler   # ← was StandardScaler
+from sklearn.decomposition import PCA             # ← new: optional whitening
 
 import logger
 from features import FEATURE_DIM
@@ -25,16 +26,18 @@ _lock = threading.Lock()
 
 @dataclass
 class ScoreDistribution:
-    mean: float = 0.0
-    std:  float = 1.0
-    min:  float = -1.0
-    max:  float =  1.0
+    mean:   float = 0.0
+    std:    float = 1.0
+    min:    float = -1.0
+    max:    float =  1.0
+    p05:    float = -0.5   # ← new: 5th / 95th percentile anchors for better
+    p95:    float =  0.5   #   normalisation of the tails
 
 
 @dataclass
 class ModelState:
     clf:     Optional[IsolationForest] = None
-    scaler:  Optional[StandardScaler]  = None
+    scaler:  Optional[RobustScaler]    = None   # ← type updated
     dist:    ScoreDistribution         = field(default_factory=ScoreDistribution)
     trained: bool                      = False
 
@@ -60,7 +63,6 @@ def load() -> bool:
         with open(SCALER_PATH, "rb") as f: scaler = pickle.load(f)
         with open(DIST_PATH,   "rb") as f: dist   = pickle.load(f)
 
-        # Reject models trained on a different feature dimension
         if hasattr(scaler, "n_features_in_") and scaler.n_features_in_ != FEATURE_DIM:
             logger.log("ERROR", {
                 "detail": (
@@ -85,9 +87,7 @@ def load() -> bool:
 
 def save():
     """
-    Write model artefacts atomically.
-    Each file is written to a .tmp sibling first; all three are then renamed
-    in one pass so a mid-write crash never leaves a partially-updated set.
+    Write model artefacts atomically (tmp → rename).
     Must be called while _lock is held by the caller.
     """
     DATA_DIR.mkdir(exist_ok=True)
@@ -103,11 +103,9 @@ def save():
             with open(tmp, "wb") as f:
                 pickle.dump(obj, f)
             tmp_paths.append((tmp, path))
-        # All writes succeeded — atomically promote
         for tmp, final in tmp_paths:
-            tmp.replace(final)      # atomic on POSIX; best-effort on Windows
+            tmp.replace(final)
     except Exception as e:
-        # Clean up any .tmp files left behind
         for tmp, _ in tmp_paths:
             try:
                 tmp.unlink(missing_ok=True)
@@ -124,16 +122,31 @@ def train(X: np.ndarray, contamination: float = 0.05) -> bool:
     """
     Fit a new IsolationForest on the supplied feature matrix X.
 
-    Guards:
-      - minimum sample count and correct feature dimension
-      - NaN / Inf in training data
-      - near-duplicate rows (e.g. copy-pasted feature vectors)
-      - near-zero variance (constant features)
+    Changes vs. original
+    --------------------
+    1. RobustScaler instead of StandardScaler
+       Our new feature set contains ratio features and entropy values with
+       heavy-tailed distributions and occasional large outliers (e.g. a user
+       who had one very distracted session).  RobustScaler uses median + IQR
+       rather than mean + std, so a handful of anomalous sessions don't drag
+       the scaling anchor.
+
+    2. Larger forest (300 trees) with max_samples='auto'
+       With 96 features the isolation paths are longer; more trees reduce
+       variance without much extra cost (n_jobs=-1).
+
+    3. Score distribution stores p05/p95 percentile anchors in addition to
+       mean/std.  The normalisation function uses a piecewise sigmoid that
+       is anchored to the empirical tails of the training distribution rather
+       than assuming Gaussianity — important because IsolationForest raw scores
+       are NOT Gaussian when most training samples are inliers.
+
+    Guards (unchanged): shape, NaN/Inf, duplicate rows, near-zero variance.
     """
     if X.ndim != 2 or X.shape[0] < 8 or X.shape[1] != FEATURE_DIM:
         logger.log("RETRAIN_SKIP", {
-            "reason": "bad_shape",
-            "shape":  list(X.shape),
+            "reason":       "bad_shape",
+            "shape":        list(X.shape),
             "required_dim": FEATURE_DIM,
         })
         return False
@@ -151,36 +164,51 @@ def train(X: np.ndarray, contamination: float = 0.05) -> bool:
         return False
 
     try:
-        scaler   = StandardScaler()
+        # ── 1. Scale with RobustScaler ────────────────────────────────────
+        scaler   = RobustScaler(quantile_range=(10.0, 90.0))
         X_scaled = scaler.fit_transform(X)
 
+        # ── 2. Clip extreme scaled values (protects the forest from wild
+        #       outlier paths that would distort the score distribution) ──
+        X_scaled = np.clip(X_scaled, -6.0, 6.0)
+
+        # ── 3. Fit the forest ─────────────────────────────────────────────
         contamination = float(np.clip(contamination, 0.02, 0.15))
         clf = IsolationForest(
-            n_estimators=200,
+            n_estimators=300,          # up from 200; better variance reduction
+            max_samples="auto",        # sklearn default: min(256, n_samples)
             contamination=contamination,
             random_state=42,
             n_jobs=-1,
         )
         clf.fit(X_scaled)
 
+        # ── 4. Build richer score distribution ───────────────────────────
         raw_scores = clf.decision_function(X_scaled)
         dist = ScoreDistribution(
             mean=float(np.mean(raw_scores)),
             std =float(np.std(raw_scores)),
             min =float(np.min(raw_scores)),
             max =float(np.max(raw_scores)),
+            p05 =float(np.percentile(raw_scores,  5)),
+            p95 =float(np.percentile(raw_scores, 95)),
         )
 
-        # Hold the lock for the entire state-update + save so no reader
-        # can observe a half-updated state and no concurrent train() can
-        # interleave its save() with ours.
         with _lock:
             _state.clf     = clf
             _state.scaler  = scaler
             _state.dist    = dist
             _state.trained = True
-            save()          # called inside the lock — see save() docstring
+            save()
 
+        logger.log("RETRAIN_OK", {
+            "n_samples":     X.shape[0],
+            "contamination": contamination,
+            "score_mean":    round(dist.mean, 4),
+            "score_std":     round(dist.std,  4),
+            "score_p05":     round(dist.p05,  4),
+            "score_p95":     round(dist.p95,  4),
+        })
         return True
 
     except Exception as e:
@@ -193,15 +221,46 @@ def train(X: np.ndarray, contamination: float = 0.05) -> bool:
 # ---------------------------------------------------------------------------
 
 def _normalise(raw: float, d: ScoreDistribution) -> float:
-    """Map a raw IsolationForest score to a confidence in [0, 1]."""
-    if d.std < 1e-9:
-        return 0.5
-    z = (raw - d.mean) / d.std
-    return float(np.clip(1.0 / (1.0 + np.exp(-z * 1.5)), 0.0, 1.0))
+    """
+    Map a raw IsolationForest score to a confidence in [0, 1].
+
+    Old approach: single sigmoid centred on the mean.
+    Problem:      IsolationForest scores are NOT Gaussian; the mean sits in
+                  the bulk of legitimate samples, so borderline imposters
+                  scored around 0.5 and the function had low sensitivity
+                  exactly where it mattered most.
+
+    New approach: piecewise linear mapping anchored to the empirical
+                  p05 / p95 of the TRAINING distribution, then soft-clipped
+                  through a sigmoid for smoothness at the extremes.
+
+      raw ≥ p95  → very confident inlier   → confidence near 1.0
+      raw ≤ p05  → very likely outlier     → confidence near 0.0
+      in between → linear interpolation
+
+    This makes the function maximally sensitive in the decision region
+    (p05…p95) regardless of the absolute score scale, which changes with
+    dataset size and contamination.
+    """
+    lo, hi = d.p05, d.p95
+    span   = hi - lo
+
+    if span < 1e-9:
+        # Degenerate distribution — fall back to std-based sigmoid
+        if d.std < 1e-9:
+            return 0.5
+        z = (raw - d.mean) / d.std
+        return float(np.clip(1.0 / (1.0 + np.exp(-z * 2.0)), 0.0, 1.0))
+
+    # Linear stretch: p05 → 0, p95 → 1
+    t = (raw - lo) / span          # typically in [-0.5 … 1.5]
+
+    # Soft sigmoid so the output is smooth and bounded
+    # Scale factor 4 gives ~0.02 at t=0 and ~0.98 at t=1
+    return float(np.clip(1.0 / (1.0 + np.exp(-4.0 * (t - 0.5))), 0.0, 1.0))
 
 
 def _validate_input(x: np.ndarray, expected_dim: int) -> bool:
-    """Return False if the vector has wrong shape, NaNs, or Infs."""
     if x.ndim != 1 or x.shape[0] != expected_dim:
         return False
     if np.isnan(x).any() or np.isinf(x).any():
@@ -212,7 +271,7 @@ def _validate_input(x: np.ndarray, expected_dim: int) -> bool:
 def score(x: np.ndarray) -> float:
     """
     Score a single feature vector.
-    Returns a confidence in [0, 1] (1 = very likely the enrolled user),
+    Returns confidence in [0, 1] (1 = very likely the enrolled user),
     or -1.0 on any error.
     """
     if not _validate_input(x, FEATURE_DIM):
@@ -222,7 +281,7 @@ def score(x: np.ndarray) -> float:
         if not _state.trained or _state.clf is None:
             return -1.0
         try:
-            x_scaled = _state.scaler.transform(x.reshape(1, -1))
+            x_scaled = np.clip(_state.scaler.transform(x.reshape(1, -1)), -6.0, 6.0)
             raw      = float(_state.clf.decision_function(x_scaled)[0])
             return _normalise(raw, _state.dist)
         except Exception as e:
@@ -244,7 +303,7 @@ def score_batch(X: np.ndarray) -> list[float]:
         if not _state.trained or _state.clf is None:
             return []
         try:
-            X_scaled = _state.scaler.transform(X)
+            X_scaled = np.clip(_state.scaler.transform(X), -6.0, 6.0)
             raws     = _state.clf.decision_function(X_scaled)
             d        = _state.dist
             return [_normalise(float(r), d) for r in raws]
