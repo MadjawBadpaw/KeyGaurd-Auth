@@ -1,4 +1,4 @@
-# KeyGuard 🔐(under work)
+# KeyGuard (under work)
 
 > AI-powered keystroke biometrics authentication — knows *how* you type, not *what* you type.
 
@@ -193,6 +193,3 @@ KeyGuard is an experimental research project in behavioral biometrics. It is not
 
 ---
 
-## License
-
-See [LICENSE](LICENSE) for details.
